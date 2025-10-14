@@ -1,40 +1,94 @@
--- Module: SilentAim.lua
-local Services, Info, PlayerWhitelist, LockedPlayer = ... -- import depuis Services.lua
-local LocalPlayer = Services.Players.LocalPlayer
-local Camera = workspace.CurrentCamera
+-- zz.lua
+local SilentAimModule = {}
 
--- Helper Functions
+-- Config par défaut
+SilentAimModule.Info = {
+    Enabled = false,
+    FieldOfView = 250,
+    Precision = false,
+    WallCheck = false
+}
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+local LockedPlayer = nil
+
+-- Helper
 local function ValidCharacter(Character)
     return Character and Character:FindFirstChildWhichIsA("Humanoid") and Character:FindFirstChildWhichIsA("Humanoid").Health > 0
 end
 
-local function IsArmed(Player)
-    if not Player.Character then return false end
-    for _, tool in ipairs(Player.Backpack:GetChildren()) do
-        if tool:IsA("Tool") and tool.Name ~= "Lunch" then return true end
-    end
-    for _, tool in ipairs(Player.Character:GetChildren()) do
-        if tool:IsA("Tool") and tool.Name ~= "Lunch" then return true end
-    end
-    return false
-end
-
-local TeamWhitelist = {["Inmates"]=false, ["Criminals"]=false, ["Guards"]=false}
-
 local function DangerousPlayer(Player)
     if not ValidCharacter(Player.Character) then return false end
-    if PlayerWhitelist[Player] then return false end
-    if TeamWhitelist[Player.Team.Name] then return false end
     local Humanoid = Player.Character:FindFirstChildWhichIsA("Humanoid")
-    if Humanoid and Humanoid.DisplayName:find("💢") then return true end
-    if IsArmed(Player) then return true end
-    return false
+    return Humanoid and Humanoid.DisplayName:find("💢")
 end
 
--- Retourne la fonction pour utiliser ailleurs
-return {
-    ValidCharacter = ValidCharacter,
-    DangerousPlayer = DangerousPlayer,
-    TeamWhitelist = TeamWhitelist,
-    LockedPlayer = LockedPlayer,
-}
+local function GetClosestPlayerToCursor(fov)
+    local closest
+    local shortestDist = fov or math.huge
+    local mousePos = game:GetService("UserInputService"):GetMouseLocation()
+
+    for _, Player in ipairs(Players:GetPlayers()) do
+        if Player ~= LocalPlayer and DangerousPlayer(Player) then
+            local char = Player.Character
+            if char and char.PrimaryPart then
+                local viewPos, onScreen = Camera:WorldToViewportPoint(char.PrimaryPart.Position)
+                local dist = (Vector2.new(viewPos.X, viewPos.Y) - mousePos).Magnitude
+                if onScreen and dist < shortestDist then
+                    closest = Player
+                    shortestDist = dist
+                end
+            end
+        end
+    end
+    return closest
+end
+
+-- Hook metatable
+local mt = getrawmetatable(game)
+local oldIndex = mt.__index
+setreadonly(mt, false)
+
+mt.__index = newcclosure(function(self, key)
+    if not checkcaller() and SilentAimModule.Info.Enabled then
+        if typeof(self) == "Instance" and (self:IsA("Mouse") or self:IsA("PlayerMouse")) then
+            if key == "Hit" then
+                local target = LockedPlayer or GetClosestPlayerToCursor(SilentAimModule.Info.FieldOfView)
+                if target and target.Character then
+                    local part = SilentAimModule.Info.WallCheck and target.Character:FindFirstChildWhichIsA("BasePart") or target.Character:FindFirstChild("Head")
+                    if part then
+                        local pos = part.Position
+                        if SilentAimModule.Info.Precision then
+                            pos = pos + Vector3.new(math.random(-5,5)/10, math.random(-5,5)/10, math.random(-3,3)/10)
+                        end
+                        return CFrame.new(pos)
+                    end
+                end
+            end
+        end
+    end
+    return oldIndex(self, key)
+end)
+
+setreadonly(mt, true)
+
+-- Functions publiques
+function SilentAimModule.LockPlayer(player)
+    LockedPlayer = LockedPlayer == player and nil or player
+end
+
+function SilentAimModule.UpdateFOV(value)
+    SilentAimModule.Info.FieldOfView = value
+end
+
+function SilentAimModule.TogglePrecision(state)
+    SilentAimModule.Info.Precision = state
+end
+
+function SilentAimModule.ToggleWallCheck(state)
+    SilentAimModule.Info.WallCheck = state
+end
+
+return SilentAimModule
