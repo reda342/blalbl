@@ -1,0 +1,40 @@
+-- Module: SilentAim.lua
+local Services, Info, PlayerWhitelist, LockedPlayer = ... -- import depuis Services.lua
+local LocalPlayer = Services.Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- Helper Functions
+local function ValidCharacter(Character)
+    return Character and Character:FindFirstChildWhichIsA("Humanoid") and Character:FindFirstChildWhichIsA("Humanoid").Health > 0
+end
+
+local function IsArmed(Player)
+    if not Player.Character then return false end
+    for _, tool in ipairs(Player.Backpack:GetChildren()) do
+        if tool:IsA("Tool") and tool.Name ~= "Lunch" then return true end
+    end
+    for _, tool in ipairs(Player.Character:GetChildren()) do
+        if tool:IsA("Tool") and tool.Name ~= "Lunch" then return true end
+    end
+    return false
+end
+
+local TeamWhitelist = {["Inmates"]=false, ["Criminals"]=false, ["Guards"]=false}
+
+local function DangerousPlayer(Player)
+    if not ValidCharacter(Player.Character) then return false end
+    if PlayerWhitelist[Player] then return false end
+    if TeamWhitelist[Player.Team.Name] then return false end
+    local Humanoid = Player.Character:FindFirstChildWhichIsA("Humanoid")
+    if Humanoid and Humanoid.DisplayName:find("💢") then return true end
+    if IsArmed(Player) then return true end
+    return false
+end
+
+-- Retourne la fonction pour utiliser ailleurs
+return {
+    ValidCharacter = ValidCharacter,
+    DangerousPlayer = DangerousPlayer,
+    TeamWhitelist = TeamWhitelist,
+    LockedPlayer = LockedPlayer,
+}
